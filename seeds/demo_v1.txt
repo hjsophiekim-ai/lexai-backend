@@ -1,0 +1,18 @@
+Reverse Query MVP - 요구사항 초안
+
+1. 텍스트 문서 기반
+   - 지원 형식: .txt, .md
+   - 한 문서에 여러 버전(v1, v2) 업로드
+
+2. 버전 diff
+   - 두 버전 비교 후 구조적 위치 생성
+   - start/end offset, line range 저장
+
+3. Reverse Query
+   - 사용자가 범위 선택 시 즉시 응답
+   - 전체 로그 재현 없이 인덱스 기반 조회
+
+4. UI
+   - 문서 뷰어 + 드래그 선택
+   - 레이어 오버레이(비파괴) + evidence 패널
+   - JSON export
