@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: lexai-backend
+    name: lexai-backend-docker
     env: docker
     repo: https://github.com/hjsophiekim-ai/lexai-backend
     branch: main
