@@ -12,7 +12,12 @@ router = APIRouter(prefix="/versions", tags=["versions"])
 @router.get("", response_model=list[VersionListItem])
 def list_versions(db: Session = Depends(get_db)):
     """List all versions with document info (for demo selector)."""
-    versions = db.query(Version).join(Document).order_by(Document.id, Version.created_at).all()
+    versions = (
+        db.query(Version)
+        .join(Document)
+        .order_by(Document.id, Version.created_at)
+        .all()
+    )
     return [
         VersionListItem(
             document_id=v.document_id,
@@ -30,20 +35,39 @@ def get_version(version_id: int, db: Session = Depends(get_db)):
     version = db.query(Version).filter(Version.id == version_id).first()
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
-    return {"version_id": version.id, "document_id": version.document_id, "label": version.label, "content": version.content}
+    return {
+        "version_id": version.id,
+        "document_id": version.document_id,
+        "label": version.label,
+        "content": version.content,
+    }
 
 
 @router.post("", response_model=VersionResponse)
 def create_version(payload: VersionCreate, db: Session = Depends(get_db)):
+    """
+    Create a version.
+    Demo-friendly behavior:
+    - If payload.document_id is provided:
+        - Use existing Document if found
+        - If not found, auto-create the Document (instead of 404)
+    - If payload.document_id is not provided:
+        - Create a new Document
+    """
+    # 1) Resolve or create Document
     if payload.document_id is not None:
         doc = db.query(Document).filter(Document.id == payload.document_id).first()
         if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+            # ✅ 핵심: 문서 없으면 자동 생성 (데모용)
+            doc = Document(title=payload.document_title or "Untitled")
+            db.add(doc)
+            db.flush()
     else:
         doc = Document(title=payload.document_title or "Untitled")
         db.add(doc)
         db.flush()
 
+    # 2) Create Version
     version = Version(
         document_id=doc.id,
         label=payload.version_label,
@@ -52,6 +76,7 @@ def create_version(payload: VersionCreate, db: Session = Depends(get_db)):
     db.add(version)
     db.flush()
 
+    # 3) Create segments
     for line_start, line_end, start_offset, end_offset, content in segment_text(payload.content):
         seg = VersionSegment(
             version_id=version.id,
@@ -65,7 +90,12 @@ def create_version(payload: VersionCreate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(version)
-    return VersionResponse(document_id=doc.id, version_id=version.id, label=version.label)
+
+    return VersionResponse(
+        document_id=doc.id,
+        version_id=version.id,
+        label=version.label,
+    )
 
 
 @router.get("/{version_id}/export")
@@ -74,9 +104,37 @@ def export_version(version_id: int, db: Session = Depends(get_db)):
     version = db.query(Version).filter(Version.id == version_id).first()
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
-    segments = [{"line_start": s.line_start, "line_end": s.line_end, "start_offset": s.start_offset, "end_offset": s.end_offset, "content": s.content} for s in version.segments]
-    entries = db.query(ReverseIndexEntry).filter(ReverseIndexEntry.version_id == version_id).order_by(ReverseIndexEntry.line_start).all()
-    reverse_index = [{"start_offset": e.start_offset, "end_offset": e.end_offset, "line_start": e.line_start, "line_end": e.line_end, "kind": e.kind, "summary": e.summary, "evidence": e.evidence} for e in entries]
+
+    segments = [
+        {
+            "line_start": s.line_start,
+            "line_end": s.line_end,
+            "start_offset": s.start_offset,
+            "end_offset": s.end_offset,
+            "content": s.content,
+        }
+        for s in version.segments
+    ]
+
+    entries = (
+        db.query(ReverseIndexEntry)
+        .filter(ReverseIndexEntry.version_id == version_id)
+        .order_by(ReverseIndexEntry.line_start)
+        .all()
+    )
+    reverse_index = [
+        {
+            "start_offset": e.start_offset,
+            "end_offset": e.end_offset,
+            "line_start": e.line_start,
+            "line_end": e.line_end,
+            "kind": e.kind,
+            "summary": e.summary,
+            "evidence": e.evidence,
+        }
+        for e in entries
+    ]
+
     return {
         "version_id": version.id,
         "document_id": version.document_id,
